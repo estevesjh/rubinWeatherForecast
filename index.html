@@ -14,7 +14,7 @@
   <div id="container" style="width: 90%; height: 500px; margin: auto;"></div>
 
   <script>
-    fetch('temp_forecast_20250805.csv')
+    fetch('https://rubin-weather-forecast.jesteves.workers.dev/api/forecast')
       .then(response => response.text())
       .then(csv => {
         const lines = csv.trim().split('\n');
