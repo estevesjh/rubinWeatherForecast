@@ -2,19 +2,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // In-memory storage for latest CSV (demo only, not persistent)
-    if (!globalThis.latestCSV) {
-      globalThis.latestCSV = null;
-    }
-
-    // Handle CSV upload
+    // Handle CSV upload (store in KV)
     if (request.method === 'POST' && url.pathname === '/api/update') {
       const contentType = request.headers.get('Content-Type');
       if (!contentType || !contentType.includes('text/csv')) {
         return new Response('Invalid content type. Expected text/csv.', { status: 400 });
       }
       const csvData = await request.text();
-      globalThis.latestCSV = csvData;
+      await env.TEMP_KV.put('latest_csv', csvData);
       return new Response('CSV uploaded successfully.', { status: 200 });
     }
 
@@ -181,10 +176,11 @@ export default {
       );
     }
 
-    // Serve latest CSV at /api/forecast
+    // Serve latest CSV from KV at /api/forecast
     if (url.pathname === '/api/forecast') {
-      if (globalThis.latestCSV) {
-        return new Response(globalThis.latestCSV, {
+      const latestCSV = await env.TEMP_KV.get('latest_csv');
+      if (latestCSV) {
+        return new Response(latestCSV, {
           headers: { 'Content-Type': 'text/csv' }
         });
       } else {
