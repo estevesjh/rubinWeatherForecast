@@ -1,0 +1,3 @@
+name = "rubin-weather-forecast"
+main = "cloudflare_worker.js"
+compatibility_date = "2025-08-07"
