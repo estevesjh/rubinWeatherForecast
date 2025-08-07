@@ -2,6 +2,22 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // In-memory storage for latest CSV (demo only, not persistent)
+    if (!globalThis.latestCSV) {
+      globalThis.latestCSV = null;
+    }
+
+    // Handle CSV upload
+    if (request.method === 'POST' && url.pathname === '/api/update') {
+      const contentType = request.headers.get('Content-Type');
+      if (!contentType || !contentType.includes('text/csv')) {
+        return new Response('Invalid content type. Expected text/csv.', { status: 400 });
+      }
+      const csvData = await request.text();
+      globalThis.latestCSV = csvData;
+      return new Response('CSV uploaded successfully.', { status: 200 });
+    }
+
     // Serve index.html
     if (url.pathname === '/' || url.pathname === '/index.html') {
       return new Response(
@@ -165,13 +181,15 @@ export default {
       );
     }
 
-    // Serve CSV file
-    if (url.pathname === '/temp_forecast_20250805.csv') {
-      // You may want to inline the CSV or read from KV/storage
-      // For demo, just return a placeholder
-      return new Response('timestamp,tmin,tmean,tmax,sunset,tpmin,tprophet,tpmax\n', {
-        headers: { 'Content-Type': 'text/csv' }
-      });
+    // Serve latest CSV at /api/forecast
+    if (url.pathname === '/api/forecast') {
+      if (globalThis.latestCSV) {
+        return new Response(globalThis.latestCSV, {
+          headers: { 'Content-Type': 'text/csv' }
+        });
+      } else {
+        return new Response('No forecast uploaded yet.', { status: 404 });
+      }
     }
 
     return new Response('Not found', { status: 404 });
