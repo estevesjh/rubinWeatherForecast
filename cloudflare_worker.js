@@ -54,6 +54,12 @@ export default {
           console.log('Header:', header);
           console.log('Total lines parsed:', lines.length);
           const idx = name => header.indexOf(name);
+
+          function safeParse(val) {
+            const n = parseFloat(val);
+            return isNaN(n) ? null : +n.toFixed(1);
+          }
+
           const tminData = [], tmeanData = [], tmaxData = [];
           const tpminData = [], tprophetData = [], tpmaxData = [];
           const sunsetLines = [];
@@ -68,12 +74,12 @@ export default {
             const ts = new Date(cols[idx('timestamp')]).getTime();
             if (cols[idx('sunset')].toLowerCase() === 'true') sunsetLines.push(ts);
 
-            const tmin       = parseFloat(parseFloat(cols[idx('tmin')]).toFixed(1));
-            const tmean      = parseFloat(parseFloat(cols[idx('tmean')]).toFixed(1));
-            const tmax       = parseFloat(parseFloat(cols[idx('tmax')]).toFixed(1));
-            const tpminVal   = parseFloat(parseFloat(cols[idx('tpmin')]).toFixed(1));
-            const tprophet   = parseFloat(parseFloat(cols[idx('tprophet')]).toFixed(1));
-            const tpmaxVal   = parseFloat(parseFloat(cols[idx('tpmax')]).toFixed(1));
+            const tmin       = safeParse(cols[idx('tmin')]);
+            const tmean      = safeParse(cols[idx('tmean')]);
+            const tmax       = safeParse(cols[idx('tmax')]);
+            const tpminVal   = safeParse(cols[idx('tpmin')]);
+            const tprophet   = safeParse(cols[idx('tprophet')]);
+            const tpmaxVal   = safeParse(cols[idx('tpmax')]);
 
             tmeanData.push([ts, tmean]);
             tprophetData.push([ts, tprophet]);
@@ -85,6 +91,12 @@ export default {
           console.log('tmeanData points:', tmeanData.length);
           console.log('tpminData points:', tpminData.length);
           console.log('Sunset markers:', sunsetLines.length);
+
+          Highcharts.setOptions({
+            time: {
+              timezone: 'America/Santiago'
+            }
+          });
 
           const obsBand  = tminData.map((d, i) => [d[0], d[1], tmaxData[i][1]]);
           const predBand = tpminData.map((d, i) => [d[0], d[1], tpmaxData[i][1]]);
@@ -101,6 +113,18 @@ export default {
             xAxis: {
               type: 'datetime',
               title: { text: 'Time (local)' },
+              labels: {
+                formatter: function () {
+                  // Display local Chile time using toLocaleString
+                  const dt = new Date(this.value);
+                  return dt.toLocaleString("en-US", { 
+                    timeZone: "America/Santiago", 
+                    hour12: false,
+                    year: "numeric", month: "2-digit", day: "2-digit",
+                    hour: "2-digit", minute: "2-digit"
+                  }).replace(",", "");
+                }
+              },
               plotLines: sunsetLines.map(ts => ({
                 value: ts,
                 color: 'gray',
@@ -150,7 +174,8 @@ export default {
                 name: 'Weather Tower',
                 data: tmeanData,
                 color: 'black',
-                zIndex: 1
+                zIndex: 1,
+                connectNulls: false
               },
               {
                 name: 'Forecast Range',
@@ -165,7 +190,8 @@ export default {
                 name: 'Prophet Forecast',
                 data: tprophetData,
                 color: 'firebrick',
-                zIndex: 1
+                zIndex: 1,
+                connectNulls: false
               }
             ],
             credits: { enabled: false }

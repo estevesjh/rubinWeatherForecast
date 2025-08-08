@@ -1,0 +1,31 @@
+import requests
+from helper import DataFileHandler
+import json
+from datetime import datetime, timezone
+
+handler = DataFileHandler()
+csv_path = handler.get_latest_path()
+url = "https://rubin-weather-forecast.jesteves.workers.dev/api/update"
+
+with open(csv_path, "r", encoding="utf-8") as f:
+    csv_data = f.read()
+
+headers = {"Content-Type": "text/csv"}
+response = requests.post(url, data=csv_data, headers=headers)
+
+if response.status_code != 200:
+    raise RuntimeError(f"Upload failed: {response.status_code} {response.text}")
+
+print("CSV uploaded successfully.")
+
+# Append metadata log after successful upload
+metadata_path = handler.base_dir / "upload_metadata.log"
+log_entry = {
+    "filename": str(csv_path),
+    "size_bytes": len(csv_data),
+    "upload_time_utc": datetime.now(timezone.utc).isoformat(),
+    "status_code": response.status_code
+}
+with open(metadata_path, "a") as meta_file:
+    meta_file.write(json.dumps(log_entry) + "\n")
+print(f"Metadata log updated: {metadata_path}")
