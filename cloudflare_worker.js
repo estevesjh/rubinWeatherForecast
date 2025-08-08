@@ -112,18 +112,12 @@ export default {
             title: { text: null },                       // No extra title
             xAxis: {
               type: 'datetime',
-              title: { text: 'Time (local)' },
-              labels: {
-                formatter: function () {
-                  // Display local Chile time using toLocaleString
-                  const dt = new Date(this.value);
-                  return dt.toLocaleString("en-US", { 
-                    timeZone: "America/Santiago", 
-                    hour12: false,
-                    year: "numeric", month: "2-digit", day: "2-digit",
-                    hour: "2-digit", minute: "2-digit"
-                  }).replace(",", "");
-                }
+              title: { text: 'Time (CLT)' },
+              dateTimeLabelFormats: {
+                hour: '%m/%d %H:%M',
+                day: '%m/%d',
+                week: '%m/%d',
+                month: '%b %Y'
               },
               plotLines: sunsetLines.map(ts => ({
                 value: ts,
