@@ -113,12 +113,6 @@ export default {
             xAxis: {
               type: 'datetime',
               title: { text: 'Time (CLT)' },
-              dateTimeLabelFormats: {
-                hour: '%m/%d %H:%M',
-                day: '%m/%d',
-                week: '%m/%d',
-                month: '%b %Y'
-              },
               plotLines: sunsetLines.map(ts => ({
                 value: ts,
                 color: 'gray',
