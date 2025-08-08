@@ -35,6 +35,20 @@ class DataFileHandler:
             raise FileNotFoundError("No cache files found in cache/.")
         return files[-1]
 
+    def get_daily_cache_path(self, day: datetime) -> Path:
+        """
+        Returns the Path for the daily cache file for the given Chilean local day.
+        Argument 'day' should be a datetime at local midnight (America/Santiago).
+        """
+        # Always ensure day is in Chile local time and floored to midnight
+        tz_chile = pytz.timezone("America/Santiago")
+        if day.tzinfo is None:
+            day = tz_chile.localize(day)
+        else:
+            day = day.astimezone(tz_chile)
+        day_str = day.strftime('%Y%m%d')
+        return self.cache_dir / f"efd_temp_{day_str}.csv"
+        
     def get_monthly_archive_path(self, dt: datetime) -> Path:
         """Returns Path to the monthly archive for the given datetime."""
         dt = ensure_utc_timezone(dt).astimezone(pytz.timezone("America/Santiago"))
@@ -42,15 +56,36 @@ class DataFileHandler:
         month_dir = self.archive_dir / ym
         return month_dir / f"forecast_{ym}.csv"
 
-    def read_cache_df(self) -> pd.DataFrame:
-        cache_path = self.get_latest_cache_path()
+    def read_cache_df(self, day: datetime) -> pd.DataFrame:
+        cache_path = self.get_daily_cache_path(day)
+        if not cache_path.exists():
+            print(f"❌ Cache file missing: {cache_path}")
+            return pd.DataFrame()
+
         df = pd.read_csv(cache_path, index_col=0, parse_dates=True)
+        # print the number of nan values found in the dataframe
+        print(f"Read cache file: {cache_path} with {df.isna().sum().sum()} NaN values")
         if df.index.tz is None:
             df.index = df.index.tz_localize("UTC")
         else:
             df.index = df.index.tz_convert("UTC")
         df.index.freq = self.freq
         return df
+
+    def update_monthly_archive(self, dt: datetime):
+        df_monthly = self.read_monthly_df(dt)
+        df_daily = self.read_cache_df(dt)
+        
+        if df_daily.empty:
+            print(f"[WARN] No daily cache data to update monthly for {dt.strftime('%Y-%m-%d')}")
+            return
+        # Update monthly with daily
+        df_monthly.update(df_daily)
+        
+        # Write back
+        month_path = self.get_monthly_archive_path(dt)
+        month_path.parent.mkdir(parents=True, exist_ok=True)
+        self.to_csv(df_monthly, month_path)
 
     def read_monthly_df(self, dt: datetime) -> pd.DataFrame:
         dt = ensure_utc_timezone(dt).astimezone(pytz.timezone("America/Santiago"))
@@ -74,6 +109,7 @@ class DataFileHandler:
         """Return a DataFrame for the last `window_days` up to `now`, filling from cache & monthly archive."""
         # make sure now is in UTC
         now_utc = ensure_utc_timezone(now)
+        now_local = now_utc.astimezone(pytz.timezone("America/Santiago"))
 
         # compute start/end of window (midnight Chile time)
         start, end = get_chile_midnight_window(now_utc, self.window_days)
@@ -81,16 +117,15 @@ class DataFileHandler:
         # setup the new index
         idx = pd.date_range(start, end, freq=self.freq, tz="UTC")
 
-        # Try cache first
-        cache_df = self.read_cache_df().reindex(idx)
+        # Update monthly archive with latest cache
+        self.update_monthly_archive(now_local)
 
-        # Then the relevant month (for any older gaps)
+        # Then the relevant month 
         monthly_df = self.read_monthly_df(end).reindex(idx)
 
         # Build result, prefer cache over archive
-        out = pd.DataFrame(index=idx, columns=cache_df.columns)
+        out = pd.DataFrame(index=idx, columns=monthly_df.columns)
         out.update(monthly_df)
-        out.update(cache_df)
         return out
 
     def write_latest(self, df: pd.DataFrame):
@@ -98,6 +133,12 @@ class DataFileHandler:
 
     def get_latest_path(self) -> Path:
         return self.latest_file
+    
+    def to_csv(self, df: pd.DataFrame, out_path: Path):
+        """Write the forecast DataFrame to CSV with proper formatting."""
+        df_reset = df.reset_index().rename(columns={"index": "timestamp"})
+        df_reset["timestamp"] = df_reset["timestamp"].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        df_reset.to_csv(out_path, index=False)
 
 def get_chile_midnight_window(now: datetime, window_days: int):
     """Get start and end UTC timestamps for a window ending at Chile local midnight."""

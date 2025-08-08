@@ -7,8 +7,16 @@ from helper import DataFileHandler  # Adjust if the class is in a different file
 # --- Step 1: Find month boundaries ---
 
 # Local Chilean time for "now"
+# tz_chile = pytz.timezone("America/Santiago")
+# now_local = datetime.now(tz_chile)
+
+# set the date to 2024-12-01
 tz_chile = pytz.timezone("America/Santiago")
-now_local = datetime.now(tz_chile)
+# now_local = tz_chile.localize(datetime(2024, 12, 1, 0, 0, 0))
+now_local = tz_chile.localize(datetime(2024, 7, 1, 0, 0, 0))
+
+handler = DataFileHandler()
+monthly_path = handler.get_monthly_archive_path(now_local)
 
 # This month (as YYYY-MM)
 month_str = now_local.strftime("%Y-%m")
@@ -30,6 +38,7 @@ print(f"Building monthly dataset for {month_str}")
 print(f"Querying data from {start_time.isoformat()} to {end_time.isoformat()} (Chile time)")
 
 # --- Step 2: Query the EFD for the whole window ---
+monthly_path.parent.mkdir(parents=True, exist_ok=True)
 
 query = EFDTemperatureQuery(
     start_date=start_time.astimezone(pytz.UTC),
@@ -37,14 +46,7 @@ query = EFDTemperatureQuery(
     freq="15min",
     verbose=True
 )
-df = query.fetch()
+df = query.to_csv(monthly_path)
 
 # --- Step 3: Save to the monthly archive ---
-
-handler = DataFileHandler(window_days=7)
-monthly_path = handler.get_monthly_archive_path(now_local)
-# Ensure output directory exists
-monthly_path.parent.mkdir(parents=True, exist_ok=True)
-df.to_csv(monthly_path, index=True)
-
 print(f"✅ Saved monthly data to {monthly_path}")

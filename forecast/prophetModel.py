@@ -37,7 +37,14 @@ class ProphetTwilightValidator:
     def __init__(self, df: pd.DataFrame):
         if df is None:
             raise ValueError("Must provide a DataFrame as input")
+        if 'ds' not in df.columns or 'y' not in df.columns:
+            df = self.prepare_df(df)
+
         self.df = df
+        self.df['is_evening_twilight'] = self.df['is_evening_twilight'].astype(bool)
+        self.df['is_morning_twilight'] = self.df['is_morning_twilight'].astype(bool)
+        
+        self.filename = None  # optional, for reference
         # cache evening-twilight timestamps
         self.twilight_times = self.df.loc[self.df.is_evening_twilight, "ds"]
         self.sunrise_times = self.df.loc[self.df.is_morning_twilight, "ds"]
@@ -222,16 +229,8 @@ class ProphetTwilightValidator:
             return None
 
         # 4. Determine all future forecast points (where y is NaN)
-        forecast_points = self.df[self.df.y.isna()]["ds"]
-        if forecast_points.empty:
-            print("No missing y values to forecast")
-            return None
-
         last_forecast_time = self.df["ds"].max()
         n_periods = int((last_forecast_time - end) / pd.Timedelta(minutes=15))
-        if n_periods <= 0:
-            print("No future periods to predict")
-            return None
 
         # 5. Build full future DataFrame
         future = model.make_future_dataframe(periods=n_periods, freq="15min", include_history=True)
@@ -255,6 +254,63 @@ class ProphetTwilightValidator:
             "sunrise": sunrise,
             "sunset": sunset,
         }
+
+    def prepare_df(self, rolling_df):
+        rolling_df['y'] = rolling_df['mean']
+        rolling_df['ds'] = rolling_df.index.tz_convert("America/Santiago")
+        # ds column should not have timezone info for Prophet
+        rolling_df['ds'] = rolling_df['ds'].dt.tz_localize(None)
+        return rolling_df
+
+    def to_csv(self, merged, out_path):
+        # 1. robust column renaming to canonical website schema -------------
+        rename_map = {
+            "ds": "timestamp",
+            "min": "tmin",
+            "mean": "tmean",
+            "max": "tmax",
+            "yhat_lower": "tpmin",
+            "yhat": "tprophet",
+            "yhat_upper": "tpmax",
+            "is_evening_twilight": "sunset",
+        }
+        merged = merged.rename(columns=rename_map)
+
+        # 2. keep only what the site needs, coerce dtypes -------------------
+        df = merged[[
+            "timestamp", "tmin", "tmean", "tmax",
+            "sunset",    "tpmin", "tprophet", "tpmax"
+        ]].copy()
+
+        # - timestamps as ISO-8601 local-time strings (with UTC offset)
+        if pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
+            df["timestamp"] = (
+                pd.to_datetime(df["timestamp"])
+                .dt.tz_localize("America/Santiago", nonexistent="shift_forward", ambiguous="NaT")
+                .dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+            )
+
+        chile_tz = pytz.timezone("America/Santiago")
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        if df["timestamp"].dt.tz is None:
+            # Assume it is UTC, localize and convert
+            df["timestamp"] = df["timestamp"].dt.tz_localize("UTC").dt.tz_convert(chile_tz)
+        else:
+            df["timestamp"] = df["timestamp"].dt.tz_convert(chile_tz)
+        # Format with offset (add colon in offset)
+        df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+        df["timestamp"] = df["timestamp"].str.replace(r'(\d{2})(\d{2})$', r'\1:\2', regex=True)
+
+        # ensure sunset is “true/false” lowercase (so JS .toLowerCase() works)
+        df["sunset"] = df["sunset"].astype(bool).map({True: "true", False: "false"})
+
+        # 3. round temps to 2 decimals (match tooltip format) ---------------
+        for col in ["tmin", "tmean", "tmax", "tpmin", "tprophet", "tpmax"]:
+            df[col] = df[col].astype(float).round(2)
+
+        # 4. write ----------------------------------------------------------
+        df.to_csv(out_path, index=False)
+        print(f"✅ wrote {len(df):,} rows → {out_path}")
 
 
 def _one_eval(args):
