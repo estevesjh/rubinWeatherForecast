@@ -254,11 +254,11 @@ class ProphetTwilightValidator:
         # Sort & reset index
         sunrise = self.sunrise_times.sort_values().reset_index(drop=True)
         sunset  = self.twilight_times.sort_values().reset_index(drop=True)
-        middleday = sunrise + pd.Timedelta(hours=6)
         self.changepoints = {
             "sunrise": sunrise,
             "sunset": sunset,
-            "middleday": middleday
+            "middleday": sunrise + pd.Timedelta(hours=6),
+            "midnight": sunset + pd.Timedelta(hours=6),
         }
 
     def prepare_df(self, rolling_df):

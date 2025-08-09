@@ -187,9 +187,10 @@ export default {
               {
                 name: 'Trend + Weekly',
                 data: ttrendWeeklyData,
-                color: 'orange',
+                color: 'gray',
                 zIndex: 1,
-                connectNulls: false
+                connectNulls: false,
+                marker: { enabled: false }
               }
             ],
             credits: { enabled: false }
