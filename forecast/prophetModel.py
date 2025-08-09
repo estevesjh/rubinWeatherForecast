@@ -4,7 +4,6 @@ import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 from dataclasses import dataclass, asdict
-from typing import Optional
 from prophet import Prophet
 import json
 import pytz
@@ -78,14 +77,15 @@ class ProphetTwilightValidator:
         if len(cpoints)>10:
             n_changepoints = 0
         else:
-            n_changepoints = max(5, min(25, len(train_df) // 48))
-
+            n_changepoints = 25
         m = Prophet(yearly_seasonality=False, daily_seasonality=True,
                     weekly_seasonality=True, changepoint_range=0.95,
-                    n_changepoints=n_changepoints, changepoints=cpoints)
+                    changepoint_prior_scale=0.5,
+                    changepoints=cpoints,
+                    n_changepoints=n_changepoints)
 
-        if offset_hour>5:
-            m.add_seasonality(name='daylight', period=0.75, fourier_order=10)
+        # if offset_hour>5:
+        m.add_seasonality(name='daylight', period=0.75, fourier_order=13)
 
         m.fit(train_df[["ds", "y"]])
         return m
@@ -94,7 +94,7 @@ class ProphetTwilightValidator:
         if not hasattr(self, 'changepoints'):
             return None
         # Filter changepoints to be within [start, end]
-        cp = []
+        cp = [start, end]
         for key, times in self.changepoints.items():
             filtered = times[(times >= start) & (times <= end)]
             cp.extend(filtered.tolist())
@@ -205,7 +205,7 @@ class ProphetTwilightValidator:
         self.last_model  = model    # cache last model
         return merged
 
-    def evaluate_latest_window(self):
+    def evaluate_latest_window(self, offset_hr: int = 0):
         """
         Fit Prophet using all data up to the last valid y, then forecast for all periods
         where y is NaN (including up to df.index.max()).
@@ -213,6 +213,9 @@ class ProphetTwilightValidator:
         """
         # 1. Define window
         end = self.df.loc[self.df.y.notna(), "ds"].max()
+        end = end - pd.Timedelta(hours=offset_hr)
+
+        print(f"[INFO] Latest valid data at: {end}")
         start = self.sunrise_times.min()
 
         # 2. Training data
@@ -238,6 +241,7 @@ class ProphetTwilightValidator:
 
         # 6. Merge forecast with self.df (left join on 'ds')
         merged = pd.merge(forecast, self.df, on='ds', how='left', suffixes=('_pred', '_obs'))
+        # merged['y'][merged['ds']>end] = np.nan
 
         # 7. For rows where y is NaN but yhat is present, this is a forecasted value
         bool_cols = ['is_evening_twilight', 'is_morning_twilight']
@@ -250,9 +254,11 @@ class ProphetTwilightValidator:
         # Sort & reset index
         sunrise = self.sunrise_times.sort_values().reset_index(drop=True)
         sunset  = self.twilight_times.sort_values().reset_index(drop=True)
+        middleday = sunrise + pd.Timedelta(hours=6)
         self.changepoints = {
             "sunrise": sunrise,
             "sunset": sunset,
+            "middleday": middleday
         }
 
     def prepare_df(self, rolling_df):
@@ -262,7 +268,17 @@ class ProphetTwilightValidator:
         rolling_df['ds'] = rolling_df['ds'].dt.tz_localize(None)
         return rolling_df
 
+    def apply_kalman_filter(self, merged):
+        """
+        Adds Kalman-filtered forecast columns to merged DataFrame.
+        Uses simple covariance estimates:
+        - Observation covariance: median((max-min)/2) 
+        - Model covariance: median((yhat_upper-yhat_lower)/2)
+        """
+        raise NotImplementedError("Kalman filter application is not implemented yet.")
+
     def to_csv(self, merged, out_path):
+        merged['trend-weekly'] = merged['trend'] + merged['weekly']
         # 1. robust column renaming to canonical website schema -------------
         rename_map = {
             "ds": "timestamp",
@@ -279,7 +295,8 @@ class ProphetTwilightValidator:
         # 2. keep only what the site needs, coerce dtypes -------------------
         df = merged[[
             "timestamp", "tmin", "tmean", "tmax",
-            "sunset",    "tpmin", "tprophet", "tpmax"
+            "sunset",    "tpmin", "tprophet", "tpmax", 
+            "trend-weekly"
         ]].copy()
 
         # - timestamps as ISO-8601 local-time strings (with UTC offset)
@@ -305,7 +322,7 @@ class ProphetTwilightValidator:
         df["sunset"] = df["sunset"].astype(bool).map({True: "true", False: "false"})
 
         # 3. round temps to 2 decimals (match tooltip format) ---------------
-        for col in ["tmin", "tmean", "tmax", "tpmin", "tprophet", "tpmax"]:
+        for col in ["tmin", "tmean", "tmax", "tpmin", "tprophet", "tpmax", "trend-weekly"]:
             df[col] = df[col].astype(float).round(2)
 
         # 4. write ----------------------------------------------------------

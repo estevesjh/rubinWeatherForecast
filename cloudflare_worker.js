@@ -62,6 +62,7 @@ export default {
 
           const tminData = [], tmeanData = [], tmaxData = [];
           const tpminData = [], tprophetData = [], tpmaxData = [];
+          const ttrendWeeklyData = [];
           const sunsetLines = [];
 
           lines.forEach((line, i) => {
@@ -80,6 +81,7 @@ export default {
             const tpminVal   = safeParse(cols[idx('tpmin')]);
             const tprophet   = safeParse(cols[idx('tprophet')]);
             const tpmaxVal   = safeParse(cols[idx('tpmax')]);
+            const ttrendWeekly = safeParse(cols[idx('trend-weekly')]);
 
             tmeanData.push([ts, tmean]);
             tprophetData.push([ts, tprophet]);
@@ -87,6 +89,7 @@ export default {
             tmaxData.push([ts, tmax]);
             tpminData.push([ts, tpminVal]);
             tpmaxData.push([ts, tpmaxVal]);
+            ttrendWeeklyData.push([ts, ttrendWeekly]);
           });
           console.log('tmeanData points:', tmeanData.length);
           console.log('tpminData points:', tpminData.length);
@@ -178,6 +181,13 @@ export default {
                 name: 'Prophet Forecast',
                 data: tprophetData,
                 color: 'firebrick',
+                zIndex: 1,
+                connectNulls: false
+              },
+              {
+                name: 'Trend + Weekly',
+                data: ttrendWeeklyData,
+                color: 'orange',
                 zIndex: 1,
                 connectNulls: false
               }

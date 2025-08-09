@@ -47,7 +47,9 @@ def main():
     print(f"[INFO] Rolling window contains {nan_count} NaN values before forecasting.")
     
     validator = ProphetTwilightValidator(rolling_df)
-    merged = validator.evaluate_latest_window()
+    merged = validator.evaluate_latest_window(offset_hr=0)
+    # merged = validator.apply_kalman_filter(merged)
+
     if merged is None or merged.empty:
         print("❌ No forecast was produced.")
         exit(1)
