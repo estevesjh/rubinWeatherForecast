@@ -255,23 +255,26 @@ export default {
 
             const obsBand  = tmin.map((d, i) => [d[0], d[1], tmax[i][1]]);
             const predBand = tpmin.map((d, i) => [d[0], d[1], tpmax[i][1]]);
-            // ---- Build night bands pairing each sunset with sunrise ----
-            const nightBands = sunset.map(function (sun, idx) {
-              let rise = sunrise[idx];
-              if (rise === undefined) {
-                // fallback: 06:00 CLT next day
-                const dtLocal = new Date(sun).toLocaleString('en-US', { timeZone: 'America/Santiago' });
-                const local = new Date(dtLocal);
-                local.setDate(local.getDate() + 1);
-                local.setHours(6, 0, 0, 0);
-                // convert local CLT 06:00 back to UTC
-                rise = local.getTime() + local.getTimezoneOffset() * 60000;
+            // ---- Compute average night length and build bands ----
+            let nightMs = 0;
+            // If we have at least one sunrise and one sunset, compute day/night
+            if (sunrise.length > 0 && sunset.length > 0) {
+              const lastSunrise = sunrise[sunrise.length - 1];
+              const lastSunset  = sunset[sunset.length - 1];
+              const dayMs = lastSunset - lastSunrise;           // daylight duration
+              if (dayMs > 0 && dayMs < 86400000) {
+                nightMs = 86400000 - dayMs;
               }
+            }
+            // Fallback: 12 h if calculation failed
+            if (nightMs === 0) nightMs = 12 * 3600 * 1000;       // 12 h in ms
+
+            const nightBands = sunset.map(function (sun) {
               return {
-                color: 'rgba(136, 136, 136, 0.5)',
+                color: 'rgba(85, 92, 101, 0.1)',
                 from: sun,
-                to: rise,
-                label: { text: 'Night Time', style: { color: '#003366', fontWeight: '600' } },
+                to: sun + nightMs,
+                label: { text: 'Night Time', style: { color: '#555c65', fontWeight: 600 } },
                 zIndex: 0
               };
             });
@@ -317,7 +320,7 @@ export default {
               },
               series: [
                 { name: '(max-min)', type: 'arearange', data: obsBand,
-                  color: 'rgba(128,128,128,0.3)', lineWidth: 0, marker: { enabled: false }, zIndex: 0 },
+                  color: '#8080804d', lineWidth: 0, marker: { enabled: false }, zIndex: 0 },
                 { name: 'Weather Tower', data: tmean, color: 'black', zIndex: 1, connectNulls: false },
                 { name: '68% cfi', type: 'arearange', data: predBand,
                   color: 'rgba(178,34,34,0.25)', lineWidth: 0, marker: { enabled: false }, zIndex: 0 },
