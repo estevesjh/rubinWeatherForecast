@@ -91,7 +91,7 @@ export default {
   margin-bottom: 0.18em;
 }
 .twilight-time {
-  font-size: 2.2rem;
+  font-size: 1.8rem;
   font-family: 'SF Mono', 'Menlo', 'Consolas', 'monospace';
   font-weight: 600;
   color: #fff;
@@ -133,6 +133,16 @@ export default {
   box-shadow: 0 3px 18px 0 #0002;
   padding: 14px;          /* NEW: extra inner space */
 }
+}
+@keyframes flipY {
+  0%   { transform: rotateX(0deg); }
+  50%  { transform: rotateX(-90deg); }
+  100% { transform: rotateX(0deg); }
+}
+.flip-animate {
+  display: inline-block;
+  animation: flipY 0.5s ease-in-out;
+  backface-visibility: hidden;
 }
 </style>
 </head>
@@ -191,7 +201,11 @@ export default {
           hour12: false
         });
         const ct = document.getElementById('current-time');
-        if (ct) ct.textContent = nowCL + ' CLT';
+        if (ct && ct.textContent !== nowCL + ' CLT') {
+          ct.classList.add('flip-animate');
+          ct.textContent = nowCL + ' CLT';
+          ct.addEventListener('animationend', () => ct.classList.remove('flip-animate'), { once: true });
+        }
       }
       updateCurrentTimeCL();
       setInterval(updateCurrentTimeCL, 60 * 1000);
@@ -360,7 +374,12 @@ export default {
                 minute: '2-digit',
                 hour12: false
               });
-              document.getElementById('twilight-time').textContent = twilightCLTime + ' CLT';
+              var twElem = document.getElementById('twilight-time');
+              if (twElem && twElem.textContent !== twilightCLTime + ' CLT') {
+                twElem.classList.add('flip-animate');
+                twElem.textContent = twilightCLTime + ' CLT';
+                twElem.addEventListener('animationend', () => twElem.classList.remove('flip-animate'), { once: true });
+              }
               var nowUTC = Date.now();
               var diffMs = twilightUTC - nowUTC;
               var sign = '';
