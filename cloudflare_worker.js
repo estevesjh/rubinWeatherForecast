@@ -29,13 +29,85 @@ export default {
   <script src="https://code.highcharts.com/highcharts.js"></script>
   <script src="https://code.highcharts.com/highcharts-more.js"></script>
   <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  <style>
+.twilight-flex {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2.4rem;
+  margin: 2em auto 0 auto;
+  width: 94vw;
+  max-width: 1250px;
+}
+.twilight-box {
+  flex: 1 1 0;
+  max-width: 420px;
+  min-width: 190px;
+  background: #b22222;      /* firebrick */
+  border-radius: 18px;
+  box-shadow: 0 6px 32px 0 #0002;
+  padding: 1.25em 0.5em 1.1em 0.5em;
+  text-align: center;
+  color: #fff;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+.twilight-label {
+  color: #ccc;
+  font-size: 1.19rem;
+  margin-bottom: 0.19em;
+  letter-spacing: 0.01em;
+}
+.twilight-temp {
+  font-size: 3.3rem;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', 'monospace';
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.08;
+  margin-bottom: 0.18em;
+}
+.deg {
+  font-size: 1.2rem;
+  vertical-align: super;
+  margin-left: 2px;
+  color: #ccc;
+}
+.twilight-meta {
+  font-size: 1.07rem;
+  color: #f0f0f0;
+  margin-top: 0.22em;
+  opacity: 0.95;
+}
+#container {
+  flex: 2 1 0;
+  min-width: 350px;
+  min-height: 470px;
+  height: 510px;
+  margin: 0;
+  background: #18181a;
+  border-radius: 16px;
+  box-shadow: 0 3px 18px 0 #0002;
+}
+@media (max-width: 1000px) {
+  .twilight-flex { flex-direction: column; gap: 1.3rem; width: 99vw;}
+  #container { width: 99vw; min-width: 200px; height: 410px;}
+}
+  </style>
 </head>
 <body>
   <h1 style="text-align:center;">Rubin Summit Temperature Forecast</h1>
   <h2 style="text-align:center;">Forecast of the Day</h2>
   <div id="lastUpdate" style="text-align:center;font-size:0.9rem;color:#555;margin-top:0.25rem;"></div>
 
-  <div id="container" style="width: 90%; height: 500px; margin: auto;"></div>
+  <div class="twilight-flex">
+    <div class="twilight-box">
+      <div class="twilight-label">Forecast at Twilight</div>
+      <div class="twilight-temp" id="twilight-forecast">--<span class="deg">°C</span></div>
+      <div class="twilight-meta" id="twilight-actual">Actual: -- °C (Weather Tower)</div>
+    </div>
+    <div id="container"></div>
+  </div>
 
   <script>
       const statusDiv = document.createElement('div');   // spot for user messages
@@ -149,6 +221,63 @@ export default {
               ],
               credits: { enabled: false }
             });
+
+            // ----- Update Twilight Box (forecast and actual at 18:00 CLT) -----
+            try {
+              // Helper: get UTC timestamp for a given Chile (America/Santiago) local wall time
+              function santiagoLocalTimeToUTC(year, month, day, hour, minute = 0) {
+                // month: 0-11
+                // Returns UTC timestamp (ms since epoch) for this wall time
+                const dtf = new Intl.DateTimeFormat('en-US', {
+                  timeZone: 'America/Santiago',
+                  year: 'numeric', month: '2-digit', day: '2-digit',
+                  hour: '2-digit', minute: '2-digit', second: '2-digit',
+                  hour12: false
+                });
+                // Brute force search within +/-16h for a matching local hour/day
+                for (let guess = -16; guess <= 16; guess++) {
+                  const testUTC = Date.UTC(year, month, day, hour - guess, minute);
+                  const parts = dtf.formatToParts(new Date(testUTC));
+                  const lh = +parts.find(x => x.type === 'hour').value;
+                  const lm = +parts.find(x => x.type === 'minute').value;
+                  const ld = +parts.find(x => x.type === 'day').value;
+                  if (lh === hour && lm === minute && ld === day) return testUTC;
+                }
+                // fallback: now
+                return Date.now();
+              }
+
+              // Get today's date in Chile local time
+              const now = new Date();
+              const dtfCL = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Santiago' });
+              const parts = dtfCL.formatToParts(now);
+              const todayY = +parts.find(x => x.type === 'year').value;
+              const todayM = +parts.find(x => x.type === 'month').value - 1; // JS months
+              const todayD = +parts.find(x => x.type === 'day').value;
+
+              // Get UTC timestamp for today at 18:00 CLT
+              const twilightUTC = santiagoLocalTimeToUTC(todayY, todayM, todayD, 18, 0);
+
+              // Find closest index in tprophet to twilightUTC
+              function closestIdx(arr, target) {
+                return arr.reduce((bestIdx, [ts], i, a) =>
+                  Math.abs(ts - target) < Math.abs(a[bestIdx][0] - target) ? i : bestIdx, 0);
+              }
+              const idxTwilight = closestIdx(tprophet, twilightUTC);
+
+              // Get forecast and actual values
+              const forecastTwilight = tprophet[idxTwilight][1];
+              const actualTwilight = tmean[idxTwilight][1];
+
+              document.getElementById('twilight-forecast').innerHTML =
+                `${forecastTwilight !== null ? forecastTwilight.toFixed(1) : '--'}<span class="deg">°C</span>`;
+              document.getElementById('twilight-actual').textContent =
+                `Actual: ${actualTwilight !== null ? actualTwilight.toFixed(1) : '--'} °C (Weather Tower)`;
+            } catch (err) {
+              // fallback, leave '--' if not available
+              document.getElementById('twilight-forecast').innerHTML = '--<span class="deg">°C</span>';
+              document.getElementById('twilight-actual').textContent = 'Actual: -- °C (Weather Tower)';
+            }
           })
           .catch(err => {
             console.error(err);
