@@ -53,6 +53,18 @@ export default {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
 }
+.twilight-timebox {
+  max-width: 420px;
+  min-width: 190px;
+  background: #232b36cc;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px 0 #0002;
+  padding: 1.05em 0.5em 1.0em 0.5em;
+  text-align: center;
+  color: #fff;
+  margin-top: 1.1em;
+  margin-bottom: 0.5em;
+}
 .twilight-label {
   color: #ccc;
   font-size: 1.19rem;
@@ -66,6 +78,21 @@ export default {
   color: #fff;
   line-height: 1.08;
   margin-bottom: 0.18em;
+}
+.twilight-time {
+  font-size: 2.2rem;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', 'monospace';
+  font-weight: 600;
+  color: #b9eaff;
+  line-height: 1.18;
+  margin-bottom: 0.12em;
+}
+.twilight-remaining {
+  font-size: 1.31rem;
+  color: #f0f0f0;
+  margin-top: 0.22em;
+  opacity: 0.95;
+  letter-spacing: 0.02em;
 }
 .deg {
   font-size: 1.2rem;
@@ -101,10 +128,17 @@ export default {
   <div id="lastUpdate" style="text-align:center;font-size:0.9rem;color:#555;margin-top:0.25rem;"></div>
 
   <div class="twilight-flex">
-    <div class="twilight-box">
-      <div class="twilight-label">Forecast at Twilight</div>
-      <div class="twilight-temp" id="twilight-forecast">--<span class="deg">°C</span></div>
-      <div class="twilight-meta" id="twilight-actual">Actual: -- °C (Weather Tower)</div>
+    <div>
+      <div class="twilight-box">
+        <div class="twilight-label">Forecast at Twilight</div>
+        <div class="twilight-temp" id="twilight-forecast">--<span class="deg">°C</span></div>
+        <div class="twilight-meta" id="twilight-actual">Actual: -- °C (Weather Tower)</div>
+      </div>
+      <div class="twilight-timebox">
+        <div class="twilight-label">Twilight Time</div>
+        <div class="twilight-time" id="twilight-time">--:-- CLT</div>
+        <div class="twilight-remaining" id="twilight-remaining">--h --min</div>
+      </div>
     </div>
     <div id="container"></div>
   </div>
@@ -273,6 +307,40 @@ export default {
                 `${forecastTwilight !== null ? forecastTwilight.toFixed(1) : '--'}<span class="deg">°C</span>`;
               document.getElementById('twilight-actual').textContent =
                 `Actual: ${actualTwilight !== null ? actualTwilight.toFixed(1) : '--'} °C (Weather Tower)`;
+
+              // --- Update Twilight Time and Time to Twilight Box ---
+              try {
+                // Format twilight time in Chile local time
+                const dtTwilight = new Date(twilightUTC);
+                const twilightCLTime = dtTwilight.toLocaleTimeString('en-US', {
+                  timeZone: 'America/Santiago',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false
+                });
+                document.getElementById('twilight-time').textContent = `${twilightCLTime} CLT`;
+
+                // Compute hours/minutes to twilight
+                const nowUTC = Date.now();
+                let diffMs = twilightUTC - nowUTC;
+                let sign = '';
+                if (diffMs < 0) { diffMs = -diffMs; sign = '-'; }
+                const diffTotalMin = Math.floor(diffMs / 60000);
+                const hours = Math.floor(diffTotalMin / 60);
+                const mins = diffTotalMin % 60;
+                let remainingText = '';
+                if (sign === '-') {
+                  remainingText = 'Passed';
+                } else if (hours > 0) {
+                  remainingText = `${hours}h ${mins}min`;
+                } else {
+                  remainingText = `${mins}min`;
+                }
+                document.getElementById('twilight-remaining').textContent = `In ${remainingText}`;
+              } catch (err) {
+                document.getElementById('twilight-time').textContent = '--:-- CLT';
+                document.getElementById('twilight-remaining').textContent = '--h --min';
+              }
             } catch (err) {
               // fallback, leave '--' if not available
               document.getElementById('twilight-forecast').innerHTML = '--<span class="deg">°C</span>';
