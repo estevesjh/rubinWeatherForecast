@@ -56,7 +56,7 @@ export default {
 .twilight-timebox {
   max-width: 420px;
   min-width: 190px;
-  background: #232b36cc;
+  background: #555c65;
   border-radius: 18px;
   box-shadow: 0 2px 16px 0 #0002;
   padding: 1.05em 0.5em 1.0em 0.5em;
@@ -64,6 +64,17 @@ export default {
   color: #fff;
   margin-top: 1.1em;
   margin-bottom: 0.5em;
+}
+.twilight-forecast-uncertainty {
+  display: block;
+  font-size: 1.1rem;
+  color: #f5e9e9;
+  margin-top: 0.35em;
+  letter-spacing: 0.01em;
+  opacity: 0.93;
+}
+.twilight-time, .twilight-remaining {
+  color: #fff;
 }
 .twilight-label {
   color: #ccc;
@@ -132,6 +143,7 @@ export default {
       <div class="twilight-box">
         <div class="twilight-label">Forecast at Twilight</div>
         <div class="twilight-temp" id="twilight-forecast">--<span class="deg">°C</span></div>
+        <span class="twilight-forecast-uncertainty" id="twilight-forecast-uncertainty">± -- °C</span>
         <div class="twilight-meta" id="twilight-actual">Actual: -- °C (Weather Tower)</div>
       </div>
       <div class="twilight-timebox">
@@ -256,95 +268,68 @@ export default {
               credits: { enabled: false }
             });
 
-            // ----- Update Twilight Box (forecast and actual at 18:00 CLT) -----
+            // ----- Get sunset (twilight) time from CSV -----
+            var twilightUTC = null;
+            if (sunset.length > 0) {
+              twilightUTC = sunset[sunset.length - 1];
+            } else {
+              var now = new Date();
+              var dtfCL = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Santiago' });
+              var parts = dtfCL.formatToParts(now);
+              var todayY = +parts.find(function(x) { return x.type === 'year'; }).value;
+              var todayM = +parts.find(function(x) { return x.type === 'month'; }).value - 1;
+              var todayD = +parts.find(function(x) { return x.type === 'day'; }).value;
+              twilightUTC = santiagoLocalTimeToUTC(todayY, todayM, todayD, 18, 0);
+            }
+            function closestIdx(arr, target) {
+              return arr.reduce(function(bestIdx, pair, i, a) {
+                return Math.abs(pair[0] - target) < Math.abs(a[bestIdx][0] - target) ? i : bestIdx;
+              }, 0);
+            }
+            var idxTwilight = closestIdx(tprophet, twilightUTC);
+            var forecastTwilight = tprophet[idxTwilight][1];
+            var actualTwilight = tmean[idxTwilight][1];
+            var uncTwilight = tpmax[idxTwilight][1] - tpmin[idxTwilight][1];
+
+            // --- Update forecast box ---
+            document.getElementById('twilight-forecast').innerHTML =
+              (forecastTwilight !== null ? forecastTwilight.toFixed(1) : '--') + '<span class="deg">°C</span>';
+            document.getElementById('twilight-forecast-uncertainty').textContent =
+              (isFinite(uncTwilight) && uncTwilight > 0)
+                ? '\u00B1 ' + uncTwilight.toFixed(1) + '\u00B0C'
+                : '\u00B1 -- \u00B0C';
+            document.getElementById('twilight-actual').textContent =
+              (actualTwilight !== null ? actualTwilight.toFixed(1) : '--') + ' °C (Weather Tower)';
+
+            // --- Update Twilight Time box ---
             try {
-              // Helper: get UTC timestamp for a given Chile (America/Santiago) local wall time
-              function santiagoLocalTimeToUTC(year, month, day, hour, minute = 0) {
-                // month: 0-11
-                // Returns UTC timestamp (ms since epoch) for this wall time
-                const dtf = new Intl.DateTimeFormat('en-US', {
-                  timeZone: 'America/Santiago',
-                  year: 'numeric', month: '2-digit', day: '2-digit',
-                  hour: '2-digit', minute: '2-digit', second: '2-digit',
-                  hour12: false
-                });
-                // Brute force search within +/-16h for a matching local hour/day
-                for (let guess = -16; guess <= 16; guess++) {
-                  const testUTC = Date.UTC(year, month, day, hour - guess, minute);
-                  const parts = dtf.formatToParts(new Date(testUTC));
-                  const lh = +parts.find(x => x.type === 'hour').value;
-                  const lm = +parts.find(x => x.type === 'minute').value;
-                  const ld = +parts.find(x => x.type === 'day').value;
-                  if (lh === hour && lm === minute && ld === day) return testUTC;
-                }
-                // fallback: now
-                return Date.now();
+              var dtTwilight = new Date(twilightUTC);
+              var twilightCLTime = dtTwilight.toLocaleTimeString('en-US', {
+                timeZone: 'America/Santiago',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+              });
+              document.getElementById('twilight-time').textContent = twilightCLTime + ' CLT';
+              var nowUTC = Date.now();
+              var diffMs = twilightUTC - nowUTC;
+              var sign = '';
+              if (diffMs < 0) { diffMs = -diffMs; sign = '-'; }
+              var diffTotalMin = Math.floor(diffMs / 60000);
+              var hours = Math.floor(diffTotalMin / 60);
+              var mins = diffTotalMin % 60;
+              var remainingText = '';
+              if (sign === '-') {
+                remainingText = 'Passed';
+              } else if (hours > 0) {
+                remainingText = hours + 'h ' + mins + 'min';
+              } else {
+                remainingText = mins + 'min';
               }
-
-              // Get today's date in Chile local time
-              const now = new Date();
-              const dtfCL = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Santiago' });
-              const parts = dtfCL.formatToParts(now);
-              const todayY = +parts.find(x => x.type === 'year').value;
-              const todayM = +parts.find(x => x.type === 'month').value - 1; // JS months
-              const todayD = +parts.find(x => x.type === 'day').value;
-
-              // Get UTC timestamp for today at 18:00 CLT
-              const twilightUTC = santiagoLocalTimeToUTC(todayY, todayM, todayD, 18, 0);
-
-              // Find closest index in tprophet to twilightUTC
-              function closestIdx(arr, target) {
-                return arr.reduce((bestIdx, [ts], i, a) =>
-                  Math.abs(ts - target) < Math.abs(a[bestIdx][0] - target) ? i : bestIdx, 0);
-              }
-              const idxTwilight = closestIdx(tprophet, twilightUTC);
-
-              // Get forecast and actual values
-              const forecastTwilight = tprophet[idxTwilight][1];
-              const actualTwilight = tmean[idxTwilight][1];
-
-              document.getElementById('twilight-forecast').innerHTML =
-                (forecastTwilight !== null ? forecastTwilight.toFixed(1) : '--') + '<span class="deg">°C</span>';
-              document.getElementById('twilight-actual').textContent =
-                (actualTwilight !== null ? actualTwilight.toFixed(1) : '--') + ' °C (Weather Tower)';
-
-              // --- Update Twilight Time and Time to Twilight Box ---
-              try {
-                // Format twilight time in Chile local time
-                const dtTwilight = new Date(twilightUTC);
-                const twilightCLTime = dtTwilight.toLocaleTimeString('en-US', {
-                  timeZone: 'America/Santiago',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hour12: false
-                });
-                document.getElementById('twilight-time').textContent = twilightCLTime + ' CLT';
-
-                // Compute hours/minutes to twilight
-                const nowUTC = Date.now();
-                let diffMs = twilightUTC - nowUTC;
-                let sign = '';
-                if (diffMs < 0) { diffMs = -diffMs; sign = '-'; }
-                const diffTotalMin = Math.floor(diffMs / 60000);
-                const hours = Math.floor(diffTotalMin / 60);
-                const mins = diffTotalMin % 60;
-                let remainingText = '';
-                if (sign === '-') {
-                  remainingText = 'Passed';
-                } else if (hours > 0) {
-                  remainingText = hours + 'h ' + mins + 'min';
-                } else {
-                  remainingText = mins + 'min';
-                }
-                document.getElementById('twilight-remaining').textContent = 'In ' + remainingText;
-              } catch (err) {
-                document.getElementById('twilight-time').textContent = '--:-- CLT';
-                document.getElementById('twilight-remaining').textContent = '--h --min';
-              }
+              document.getElementById('twilight-remaining').textContent = 'In ' + remainingText;
             } catch (err) {
-              // fallback, leave '--' if not available
-              document.getElementById('twilight-forecast').innerHTML = '--<span class="deg">°C</span>';
-              document.getElementById('twilight-actual').textContent = 'Actual: -- °C (Weather Tower)';
+              document.getElementById('twilight-time').textContent = '--:-- CLT';
+              document.getElementById('twilight-remaining').textContent = '--h --min';
             }
           })
           .catch(err => {
