@@ -257,11 +257,11 @@ export default {
                 e = cl.getTime() - cl.getTimezoneOffset() * 60000;
               }
               nightBands.push({
-                color: 'rgba(0,0,0,0.05)',
+                color: 'rgba(136, 136, 136, 0.5)',
                 from: s,
                 to: e,
                 // label only on the first band to avoid clutter
-                label: i === 0 ? { text: 'Night Time', style: { color: '#444', fontWeight: '600' } } : undefined,
+                label: i === 0 ? { text: 'Night Time', style: { color: '#003366', fontWeight: '600' } } : undefined,
                 zIndex: 0
               });
             }
