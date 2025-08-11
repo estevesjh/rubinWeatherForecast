@@ -29,6 +29,7 @@ export default {
 <body>
   <h1 style="text-align:center;">Rubin Summit Temperature Forecast</h1>
   <h2 style="text-align:center;">Forecast of the Day</h2>
+  <div id="lastUpdate" style="text-align:center;font-size:0.9rem;color:#555;margin-top:0.25rem;"></div>
 
   <div id="container" style="width: 90%; height: 500px; margin: auto;"></div>
 
@@ -36,170 +37,119 @@ export default {
       const statusDiv = document.createElement('div');   // spot for user messages
       statusDiv.style.cssText = 'text-align:center;color:red;margin-top:1rem;';
       document.body.prepend(statusDiv);
-      fetch('https://rubin-weather-forecast.jesteves.workers.dev/api/forecast')
-        .then(response => {
-          if (!response.ok) {
-            throw new Error('Server replied ' + response.status + ' ' + response.statusText);
-          }
-          return response.text();
-        })
-        .then(csv => {
-          if (!csv.trim()) throw new Error('Empty CSV returned');
+      const lastUpdateDiv = document.getElementById('lastUpdate');
 
-          // -------- parse CSV --------
-          const lines  = csv.trim().split('\\n');
-          console.log('CSV length:', csv.length);
-          console.log('First 120 chars:', csv.slice(0, 120));
-          const header = lines.shift().split(',');
-          console.log('Header:', header);
-          console.log('Total lines parsed:', lines.length);
-          const idx = name => header.indexOf(name);
+      // ---------- live‑update helpers ----------
+      function updateBadge(latestTs) {
+        function render() {
+          const mins = Math.round((Date.now() - latestTs) / 60000);
+          lastUpdateDiv.textContent = 'Last update: ' + mins + ' min ago';
+          lastUpdateDiv.style.color = mins > 30 ? 'red' : '#555';
+        }
+        render();
+        if (updateBadge.timer) clearInterval(updateBadge.timer);
+        updateBadge.timer = setInterval(render, 60 * 1000);
+      }
 
-          function safeParse(val) {
-            const n = parseFloat(val);
-            return isNaN(n) ? null : +n.toFixed(1);
-          }
+      function fetchAndRedraw() {
+        fetch('https://rubin-weather-forecast.jesteves.workers.dev/api/forecast')
+          .then(r => {
+            if (!r.ok) throw new Error('Server replied ' + r.status + ' ' + r.statusText);
+            return r.text();
+          })
+          .then(csv => {
+            if (!csv.trim()) throw new Error('Empty CSV returned');
 
-          const tminData = [], tmeanData = [], tmaxData = [];
-          const tpminData = [], tprophetData = [], tpmaxData = [];
-          const ttrendWeeklyData = [];
-          const sunsetLines = [];
+            // ---- parse CSV (original logic retained) ----
+            const lines  = csv.trim().split('\\n');
+            const header = lines.shift().split(',');
+            const idx = n => header.indexOf(n);
+            const safe = v => { const n = parseFloat(v); return isNaN(n) ? null : +n.toFixed(1); };
 
-          lines.forEach((line, i) => {
-            if (!line.trim()) return;
-            const cols = line.split(',');
-            if (cols.length !== header.length) {
-              console.warn('Line', i, 'has unexpected column count:', cols);
-              return;
-            }
-            const ts = new Date(cols[idx('timestamp')]).getTime();
-            if (cols[idx('sunset')].toLowerCase() === 'true') sunsetLines.push(ts);
+            const tmin = [], tmean = [], tmax = [];
+            const tpmin = [], tprophet = [], tpmax = [];
+            const trend = [];
+            const sunset = [];
 
-            const tmin       = safeParse(cols[idx('tmin')]);
-            const tmean      = safeParse(cols[idx('tmean')]);
-            const tmax       = safeParse(cols[idx('tmax')]);
-            const tpminVal   = safeParse(cols[idx('tpmin')]);
-            const tprophet   = safeParse(cols[idx('tprophet')]);
-            const tpmaxVal   = safeParse(cols[idx('tpmax')]);
-            const ttrendWeekly = safeParse(cols[idx('trend-weekly')]);
+            lines.forEach(l => {
+              if (!l.trim()) return;
+              const c = l.split(',');
+              const ts = new Date(c[idx('timestamp')]).getTime();
+              if (c[idx('sunset')].toLowerCase() === 'true') sunset.push(ts);
 
-            tmeanData.push([ts, tmean]);
-            tprophetData.push([ts, tprophet]);
-            tminData.push([ts, tmin]);
-            tmaxData.push([ts, tmax]);
-            tpminData.push([ts, tpminVal]);
-            tpmaxData.push([ts, tpmaxVal]);
-            ttrendWeeklyData.push([ts, ttrendWeekly]);
+              tmean.push([ts, safe(c[idx('tmean')])]);
+              tprophet.push([ts, safe(c[idx('tprophet')])]);
+              tmin.push([ts, safe(c[idx('tmin')])]);
+              tmax.push([ts, safe(c[idx('tmax')])]);
+              tpmin.push([ts, safe(c[idx('tpmin')])]);
+              tpmax.push([ts, safe(c[idx('tpmax')])]);
+              trend.push([ts, safe(c[idx('trend-weekly')])]);
+            });
+
+            // badge
+            updateBadge(tprophet.at(-1)[0]);
+
+            const obsBand  = tmin.map((d, i) => [d[0], d[1], tmax[i][1]]);
+            const predBand = tpmin.map((d, i) => [d[0], d[1], tpmax[i][1]]);
+
+            Highcharts.setOptions({ time: { timezone: 'America/Santiago' } });
+
+            if (window.chart) window.chart.destroy();
+
+            window.chart = Highcharts.chart('container', {
+              chart: { type: 'spline', zoomType: 'x',
+                       resetZoomButton: { position: { align: 'right', verticalAlign: 'top', x: 0, y: 0 } } },
+              title: { text: null },
+              xAxis: {
+                type: 'datetime',
+                title: { text: 'Time (CLT)' },
+                plotLines: sunset.map(ts => ({
+                  value: ts, color: 'gray', width: 2, dashStyle: 'Dash',
+                  label: { text: 'Sunset', rotation: 90, textAlign: 'left', style: { color: 'gray' } },
+                  zIndex: 5
+                }))
+              },
+              yAxis: { title: { text: 'Temperature (°C)' } },
+              tooltip: {
+                shared: true,
+                xDateFormat: '%Y-%m-%d %H:%M',
+                formatter() {
+                  let s = '<b>' + Highcharts.dateFormat('%Y-%m-%d %H:%M', this.x) + '</b><br/>';
+                  this.points.forEach(p => {
+                    const n = p.series.name, col = p.color;
+                    if (n === 'Observed Range' || n === 'Forecast Range') {
+                      s += '<span style="color:' + col +
+                           '">●</span> (max‑min): <b>' + (p.point.high - p.point.low).toFixed(2) + '°C</b><br/>';
+                    } else {
+                      s += '<span style="color:' + col + '">●</span> ' + n +
+                           ': <b>' + p.y.toFixed(2) + '°C</b><br/>';
+                    }
+                  });
+                  return s;
+                }
+              },
+              series: [
+                { name: 'Observed Range', type: 'arearange', data: obsBand,
+                  color: 'rgba(128,128,128,0.3)', lineWidth: 0, marker: { enabled: false }, zIndex: 0 },
+                { name: 'Weather Tower', data: tmean, color: 'black', zIndex: 1, connectNulls: false },
+                { name: 'Forecast Range', type: 'arearange', data: predBand,
+                  color: 'rgba(178,34,34,0.25)', lineWidth: 0, marker: { enabled: false }, zIndex: 0 },
+                { name: 'Prophet Forecast', data: tprophet, color: 'firebrick', zIndex: 1, connectNulls: false },
+                { name: 'Trend + Weekly', data: trend, color: 'gray', zIndex: 1,
+                  connectNulls: false, marker: { enabled: false } }
+              ],
+              credits: { enabled: false }
+            });
+          })
+          .catch(err => {
+            console.error(err);
+            statusDiv.textContent = '⚠️ Forecast file not found or could not be loaded.';
           });
-          console.log('tmeanData points:', tmeanData.length);
-          console.log('tpminData points:', tpminData.length);
-          console.log('Sunset markers:', sunsetLines.length);
+      }
 
-          Highcharts.setOptions({
-            time: {
-              timezone: 'America/Santiago'
-            }
-          });
-
-          const obsBand  = tminData.map((d, i) => [d[0], d[1], tmaxData[i][1]]);
-          const predBand = tpminData.map((d, i) => [d[0], d[1], tpmaxData[i][1]]);
-
-          Highcharts.chart('container', {
-            chart: {
-              type: 'spline',
-              zoomType: 'x',
-              resetZoomButton: {
-                position: { align: 'right', verticalAlign: 'top', x: 0, y: 0 }
-              }
-            },
-            title: { text: null },                       // No extra title
-            xAxis: {
-              type: 'datetime',
-              title: { text: 'Time (CLT)' },
-              plotLines: sunsetLines.map(ts => ({
-                value: ts,
-                color: 'gray',
-                width: 2,
-                dashStyle: 'Dash',
-                label: {
-                  text: 'Sunset',
-                  rotation: 90,
-                  textAlign: 'left',
-                  style: { color: 'gray' }
-                },
-                zIndex: 5
-              }))
-            },
-            yAxis: {
-              title: { text: 'Temperature (°C)' }
-            },
-            tooltip: {
-              shared: true,
-              xDateFormat: '%Y-%m-%d %H:%M',
-              formatter: function () {
-                let s = '<b>' + Highcharts.dateFormat('%Y-%m-%d %H:%M', this.x) + '</b><br/>';
-                this.points.forEach(pt => {
-                  const name  = pt.series.name;
-                  const color = pt.color;
-                  if (name === 'Observed Range' || name === 'Forecast Range') {
-                    const diff = (pt.point.high - pt.point.low).toFixed(2);
-                    s += '<span style="color:' + color + '">●</span> (max - min): <b>' + diff + '°C</b><br/>';
-                  } else {
-                    s += '<span style="color:' + color + '">●</span> ' + name + ': <b>' + pt.y.toFixed(2) + '°C</b><br/>';
-                  }
-                });
-                return s;
-              }
-            },
-            series: [
-              {
-                name: 'Observed Range',
-                type: 'arearange',
-                data: obsBand,
-                color: 'rgba(128,128,128,0.3)',
-                lineWidth: 0,
-                marker: { enabled: false },
-                zIndex: 0
-              },
-              {
-                name: 'Weather Tower',
-                data: tmeanData,
-                color: 'black',
-                zIndex: 1,
-                connectNulls: false
-              },
-              {
-                name: 'Forecast Range',
-                type: 'arearange',
-                data: predBand,
-                color: 'rgba(178,34,34,0.25)',
-                lineWidth: 0,
-                marker: { enabled: false },
-                zIndex: 0
-              },
-              {
-                name: 'Prophet Forecast',
-                data: tprophetData,
-                color: 'firebrick',
-                zIndex: 1,
-                connectNulls: false
-              },
-              {
-                name: 'Trend + Weekly',
-                data: ttrendWeeklyData,
-                color: 'gray',
-                zIndex: 1,
-                connectNulls: false,
-                marker: { enabled: false }
-              }
-            ],
-            credits: { enabled: false }
-          });
-        })
-        .catch(err => {
-          console.error(err);
-          statusDiv.textContent = '⚠️ Forecast file not found or could not be loaded.';
-        });
+      // initial draw + auto‑reload every 5 minutes
+      fetchAndRedraw();
+      setInterval(fetchAndRedraw, 5 * 60 * 1000);
   </script>
 </body>
 </html>
