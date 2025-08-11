@@ -195,6 +195,7 @@ export default {
             const tpmin = [], tprophet = [], tpmax = [];
             const trend = [];
             const sunset = [];
+            const sunrise = [];
 
             lines.forEach(l => {
               if (!l.trim()) return;
@@ -202,14 +203,7 @@ export default {
               const ts = new Date(c[idx('timestamp')]).getTime();
               if (ts <= Date.now()) latestPastTs = ts;
               if (c[idx('sunset')].toLowerCase() === 'true') sunset.push(ts);
-
-              const sunrise = [];
-              lines.forEach(l => {
-              if (!l.trim()) return;
-              const c = l.split(',');
-              const ts = new Date(c[idx('timestamp')]).getTime();
               if (c[idx('sunrise')] && c[idx('sunrise')].toLowerCase() === 'true') sunrise.push(ts);
-              
               tmean.push([ts, safe(c[idx('tmean')])]);
               tprophet.push([ts, safe(c[idx('tprophet')])]);
               tmin.push([ts, safe(c[idx('tmin')])]);
@@ -277,7 +271,7 @@ export default {
                   let s = '<b>' + Highcharts.dateFormat('%Y-%m-%d %H:%M', this.x) + '</b><br/>';
                   this.points.forEach(p => {
                     const n = p.series.name, col = p.color;
-                    if (n === 'Observed Range' || n === 'Forecast Range') {
+                    if (n === '(max-min)' || n === '68% cfi') {
                       s += '<span style="color:' + col +
                            '">●</span> (max‑min): <b>' + (p.point.high - p.point.low).toFixed(2) + '°C</b><br/>';
                     } else {
