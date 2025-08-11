@@ -10,7 +10,11 @@ export default {
       }
       const csvData = await request.text();
       await env.TEMP_KV.put('latest_csv', csvData);
-      return new Response('CSV uploaded successfully.', { status: 200 });
+      const uploadTime =
+        request.headers.get('X-Upload-Timestamp') ||
+        new Date().toISOString();
+      await env.TEMP_KV.put('latest_csv_time', uploadTime);
+      return new Response('CSV uploaded successfully with timestamp stored.', { status: 200 });
     }
 
     // Serve index.html
@@ -42,7 +46,8 @@ export default {
       // ---------- live‑update helpers ----------
       function updateBadge(latestTs) {
         function render() {
-          const mins = Math.round((Date.now() - latestTs) / 60000);
+          // Show delay in whole minutes, always non‑negative
+          const mins = Math.floor(Math.abs(Date.now() - latestTs) / 60000);
           lastUpdateDiv.textContent = 'Last update: ' + mins + ' min ago';
           lastUpdateDiv.style.color = mins > 30 ? 'red' : '#555';
         }
@@ -66,6 +71,8 @@ export default {
             const idx = n => header.indexOf(n);
             const safe = v => { const n = parseFloat(v); return isNaN(n) ? null : +n.toFixed(1); };
 
+            let latestPastTs = null;
+
             const tmin = [], tmean = [], tmax = [];
             const tpmin = [], tprophet = [], tpmax = [];
             const trend = [];
@@ -75,6 +82,7 @@ export default {
               if (!l.trim()) return;
               const c = l.split(',');
               const ts = new Date(c[idx('timestamp')]).getTime();
+              if (ts <= Date.now()) latestPastTs = ts;
               if (c[idx('sunset')].toLowerCase() === 'true') sunset.push(ts);
 
               tmean.push([ts, safe(c[idx('tmean')])]);
@@ -87,7 +95,8 @@ export default {
             });
 
             // badge
-            updateBadge(tprophet.at(-1)[0]);
+            const badgeTs = latestPastTs ?? tprophet.at(0)[0];
+            updateBadge(badgeTs);
 
             const obsBand  = tmin.map((d, i) => [d[0], d[1], tmax[i][1]]);
             const predBand = tpmin.map((d, i) => [d[0], d[1], tpmax[i][1]]);
@@ -168,6 +177,13 @@ export default {
       } else {
         return new Response('No forecast uploaded yet.', { status: 404 });
       }
+    }
+
+    if (url.pathname === '/api/forecast_time') {
+      const ts = await env.TEMP_KV.get('latest_csv_time');
+      return new Response(JSON.stringify({ timestamp: ts }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     return new Response('Not found', { status: 404 });
