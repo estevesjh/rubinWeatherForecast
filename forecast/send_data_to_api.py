@@ -10,7 +10,13 @@ url = "https://rubin-weather-forecast.jesteves.workers.dev/api/update"
 with open(csv_path, "r", encoding="utf-8") as f:
     csv_data = f.read()
 
-headers = {"Content-Type": "text/csv"}
+# Add upload timestamp in UTC as a custom header
+upload_time_utc = datetime.now(timezone.utc).isoformat(timespec="seconds")
+headers = {
+    "Content-Type": "text/csv",
+    "X-Upload-Timestamp": upload_time_utc
+}
+
 response = requests.post(url, data=csv_data, headers=headers)
 
 if response.status_code != 200:
@@ -23,7 +29,7 @@ metadata_path = handler.base_dir / "upload_metadata.log"
 log_entry = {
     "filename": str(csv_path),
     "size_bytes": len(csv_data),
-    "upload_time_utc": datetime.now(timezone.utc).isoformat(),
+    "upload_time_utc": upload_time_utc,
     "status_code": response.status_code
 }
 with open(metadata_path, "a") as meta_file:
