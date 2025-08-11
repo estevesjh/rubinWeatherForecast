@@ -203,6 +203,13 @@ export default {
               if (ts <= Date.now()) latestPastTs = ts;
               if (c[idx('sunset')].toLowerCase() === 'true') sunset.push(ts);
 
+              const sunrise = [];
+              lines.forEach(l => {
+              if (!l.trim()) return;
+              const c = l.split(',');
+              const ts = new Date(c[idx('timestamp')]).getTime();
+              if (c[idx('sunrise')] && c[idx('sunrise')].toLowerCase() === 'true') sunrise.push(ts);
+              
               tmean.push([ts, safe(c[idx('tmean')])]);
               tprophet.push([ts, safe(c[idx('tprophet')])]);
               tmin.push([ts, safe(c[idx('tmin')])]);
@@ -211,14 +218,37 @@ export default {
               tpmax.push([ts, safe(c[idx('tpmax')])]);
               trend.push([ts, safe(c[idx('trend-weekly')])]);
             });
-
+            
             // badge
             const badgeTs = latestPastTs ?? tprophet.at(0)[0];
             updateBadge(badgeTs);
 
             const obsBand  = tmin.map((d, i) => [d[0], d[1], tmax[i][1]]);
             const predBand = tpmin.map((d, i) => [d[0], d[1], tpmax[i][1]]);
-
+            // ---- Make Night Band Region ----
+            let nightBands = [];
+            if (sunset.length > 0) {
+              const lastSunset = sunset[sunset.length - 1];
+              // Find the first sunrise after this sunset
+              const sunriseAfterSunset = sunrise.find(ts => ts > lastSunset);
+              let nextSunrise = sunriseAfterSunset;
+              if (!nextSunrise) {
+                // Fallback: 6am next day Chile time
+                const dt = new Date(lastSunset);
+                const clDate = new Date(dt.toLocaleString('en-US', { timeZone: 'America/Santiago' }));
+                clDate.setDate(clDate.getDate() + 1);
+                clDate.setHours(6, 0, 0, 0);
+                nextSunrise = clDate.getTime() - clDate.getTimezoneOffset() * 60000;
+              }
+              nightBands.push({
+                color: 'rgba(0,0,0,0.13)',
+                from: lastSunset,
+                to: nextSunrise,
+                label: { text: 'Night Time', style: { color: '#444', fontWeight: 600 } },
+                zIndex: 0
+              });
+            }
+              
             Highcharts.setOptions({ time: { timezone: 'America/Santiago' } });
 
             if (window.chart) window.chart.destroy();
@@ -227,14 +257,17 @@ export default {
               chart: { type: 'spline', zoomType: 'x',
                        resetZoomButton: { position: { align: 'right', verticalAlign: 'top', x: 0, y: 0 } } },
               title: { text: null },
-              xAxis: {
+                xAxis: {
                 type: 'datetime',
                 title: { text: 'Time (CLT)' },
-                plotLines: sunset.map(ts => ({
-                  value: ts, color: 'gray', width: 2, dashStyle: 'Dash',
-                  label: { text: 'Sunset', rotation: 90, textAlign: 'left', style: { color: 'gray' } },
-                  zIndex: 5
-                }))
+                plotBands: nightBands,
+                plotLines: sunset.map(function(ts) {
+                  return {
+                    value: ts, color: 'gray', width: 2, dashStyle: 'Dash',
+                    label: { text: 'Sunset', rotation: 90, textAlign: 'left', style: { color: 'gray' } },
+                    zIndex: 5
+                  };
+                })
               },
               yAxis: { title: { text: 'Temperature (°C)' } },
               tooltip: {
@@ -256,10 +289,10 @@ export default {
                 }
               },
               series: [
-                { name: 'Observed Range', type: 'arearange', data: obsBand,
+                { name: '(max-min)', type: 'arearange', data: obsBand,
                   color: 'rgba(128,128,128,0.3)', lineWidth: 0, marker: { enabled: false }, zIndex: 0 },
                 { name: 'Weather Tower', data: tmean, color: 'black', zIndex: 1, connectNulls: false },
-                { name: 'Forecast Range', type: 'arearange', data: predBand,
+                { name: '68% cfi', type: 'arearange', data: predBand,
                   color: 'rgba(178,34,34,0.25)', lineWidth: 0, marker: { enabled: false }, zIndex: 0 },
                 { name: 'Prophet Forecast', data: tprophet, color: 'firebrick', zIndex: 1, connectNulls: false },
                 { name: 'Trend + Weekly', data: trend, color: 'gray', zIndex: 1,
