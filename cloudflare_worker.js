@@ -159,6 +159,9 @@ export default {
     </div>
     <div id="container"></div>
   </div>
+  <p style="text-align:center;font-size:0.85rem;color:#555;margin-top:0.8rem;">
+    <em>Note: the forecast model is continuously updated throughout the day.</em>
+  </p>
 
   <script>
       const statusDiv = document.createElement('div');   // spot for user messages
