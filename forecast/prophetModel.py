@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-
+# from scipy.signal import savgol_filter
 from dataclasses import dataclass, asdict
 from prophet import Prophet
 import json
@@ -78,14 +78,23 @@ class ProphetTwilightValidator:
             n_changepoints = 0
         else:
             n_changepoints = 25
+        # n_changepoints = 5
         m = Prophet(yearly_seasonality=False, daily_seasonality=True,
-                    weekly_seasonality=True, changepoint_range=0.95,
-                    changepoint_prior_scale=0.5,
+                    weekly_seasonality=False, changepoint_range=0.95,
+                    changepoint_prior_scale=0.05,
                     changepoints=cpoints,
                     n_changepoints=n_changepoints)
 
+        # Add custom weekly seasonality with controlled flexibility
+        m.add_seasonality(
+            name='monthly',
+            period=3,
+            fourier_order=8,
+            prior_scale=0.05  # <-- tweak this
+        )
+
         # if offset_hour>5:
-        m.add_seasonality(name='daylight', period=0.75, fourier_order=13)
+        # m.add_seasonality(name='daylight', period=0.75, fourier_order=13)
 
         m.fit(train_df[["ds", "y"]])
         return m
@@ -94,7 +103,7 @@ class ProphetTwilightValidator:
         if not hasattr(self, 'changepoints'):
             return None
         # Filter changepoints to be within [start, end]
-        cp = [start, end]
+        cp = [start]
         for key, times in self.changepoints.items():
             filtered = times[(times >= start) & (times <= end)]
             cp.extend(filtered.tolist())
@@ -248,6 +257,20 @@ class ProphetTwilightValidator:
         for col in bool_cols:
             if col in merged.columns:
                 merged[col] = merged[col].fillna(False).astype(bool)        
+        
+        # 8. Adjust trends
+        # # twtime = merged.loc[merged['is_evening_twilight'], 'ds'].max()
+        # # twtime = twtime - pd.Timedelta(hours=2)
+        # end_time = max(end, twtime)
+
+        # merged['trend-weekly2'] = merged['trend'] + merged['monthly']
+        # merged = add_newtrend(merged, end_time=end_time)
+        # merged['trend-weekly'] = merged['newtrend']
+        merged['trend-weekly'] = merged['trend'] + merged['monthly']
+
+        # for col in ['yhat', 'yhat_lower', 'yhat_upper']:
+        #     merged = subtract_trend(merged, y_col=col)
+
         return merged
         
     def set_changepoints(self):
@@ -257,8 +280,11 @@ class ProphetTwilightValidator:
         self.changepoints = {
             "sunrise": sunrise,
             "sunset": sunset,
+            "sunrise2": sunrise - pd.Timedelta(hours=2),
             "middleday": sunrise + pd.Timedelta(hours=6),
+            "middleday2": sunset - pd.Timedelta(hours=3),
             "midnight": sunset + pd.Timedelta(hours=6),
+            "midnight2": sunset + pd.Timedelta(hours=3),
         }
 
     def prepare_df(self, rolling_df):
@@ -278,7 +304,7 @@ class ProphetTwilightValidator:
         raise NotImplementedError("Kalman filter application is not implemented yet.")
 
     def to_csv(self, merged, out_path):
-        merged['trend-weekly'] = merged['trend'] + merged['weekly']
+        # merged['trend-monthly'] = merged['trend']
         # 1. robust column renaming to canonical website schema -------------
         rename_map = {
             "ds": "timestamp",
@@ -289,13 +315,14 @@ class ProphetTwilightValidator:
             "yhat": "tprophet",
             "yhat_upper": "tpmax",
             "is_evening_twilight": "sunset",
+            "is_morning_twilight": "sunrise",
         }
         merged = merged.rename(columns=rename_map)
 
         # 2. keep only what the site needs, coerce dtypes -------------------
         df = merged[[
             "timestamp", "tmin", "tmean", "tmax",
-            "sunset",    "tpmin", "tprophet", "tpmax", 
+            "sunset", "sunrise", "tpmin", "tprophet", "tpmax", 
             "trend-weekly"
         ]].copy()
 
@@ -320,6 +347,7 @@ class ProphetTwilightValidator:
 
         # ensure sunset is “true/false” lowercase (so JS .toLowerCase() works)
         df["sunset"] = df["sunset"].astype(bool).map({True: "true", False: "false"})
+        df["sunrise"] = df["sunrise"].astype(bool).map({True: "true", False: "false"})
 
         # 3. round temps to 2 decimals (match tooltip format) ---------------
         for col in ["tmin", "tmean", "tmax", "tpmin", "tprophet", "tpmax", "trend-weekly"]:
@@ -408,3 +436,25 @@ class ProphetResult:
                 f"MAE={self.mae:.2f}, RMSE={self.rmse:.2f}, "
                 f"T_err={self.twilight_err:.2f}")
 
+def add_newtrend(df, end_time):
+    """
+    Add a 'newtrend' column to the DataFrame, representing the trend component.
+    """
+    mask = df['ds'] <= end_time
+    merged = df.copy()
+
+    yval = df['trend-weekly2'][mask].iloc[-1]
+    new_trend = np.where(mask, merged['trend-weekly2'].to_numpy(), yval)
+    merged['newtrend'] = new_trend
+    
+    return merged
+
+def subtract_trend(df, y_col='yhat'):
+    """
+    Subtract the trend component from the target variable up to end_time.
+    Returns a DataFrame with an additional 'y_detrended' column.
+    """
+    merged = df.copy()
+    y_detrended = merged[y_col] - merged['trend-weekly2']+merged['newtrend']
+    merged[y_col] = y_detrended
+    return merged
