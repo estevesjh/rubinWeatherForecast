@@ -128,11 +128,20 @@ export default {
   box-shadow: 0 3px 18px 0 #0002;
 }
 @media (max-width: 1000px) {
-  .twilight-flex { flex-direction: column; gap: 1.3rem; width: 99vw;}
-  #container { width: 99vw; min-width: 200px; height: 410px; border-radius: 20px;
-  box-shadow: 0 3px 18px 0 #0002;
-  padding: 14px;          /* NEW: extra inner space */
-}
+  .twilight-flex {
+    flex-direction: column;
+    gap: 1.3rem;
+    width: 99vw;
+    align-items: center;          /* NEW: centre children horizontally */
+  }
+  #container {
+    width: 99vw;
+    min-width: 200px;
+    height: 410px;
+    border-radius: 20px;
+    box-shadow: 0 3px 18px 0 #0002;
+    padding: 14px;          /* NEW: extra inner space */
+  }
 }
 @keyframes flipY {
   0%   { transform: rotateX(0deg); }
