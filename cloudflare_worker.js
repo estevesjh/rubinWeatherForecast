@@ -284,7 +284,7 @@ export default {
             if (window.chart) window.chart.destroy();
 
             window.chart = Highcharts.chart('container', {
-              chart: { type: 'spline', zoomType: 'x', spacing: [40, 20, 20, 20],   // top, right, bottom, left
+              chart: { type: 'spline', zoomType: 'x', spacing: [40, 40, 20, 20],   // top, right, bottom, left
                        resetZoomButton: { position: { align: 'right', verticalAlign: 'top', x: 0, y: 0 } } },
               title: { text: null },
                 xAxis: {
