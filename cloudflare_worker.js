@@ -304,9 +304,9 @@ export default {
               const actualTwilight = tmean[idxTwilight][1];
 
               document.getElementById('twilight-forecast').innerHTML =
-                `${forecastTwilight !== null ? forecastTwilight.toFixed(1) : '--'}<span class="deg">°C</span>`;
+                (forecastTwilight !== null ? forecastTwilight.toFixed(1) : '--') + '<span class="deg">°C</span>';
               document.getElementById('twilight-actual').textContent =
-                `Actual: ${actualTwilight !== null ? actualTwilight.toFixed(1) : '--'} °C (Weather Tower)`;
+                (actualTwilight !== null ? actualTwilight.toFixed(1) : '--') + ' °C (Weather Tower)';
 
               // --- Update Twilight Time and Time to Twilight Box ---
               try {
