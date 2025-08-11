@@ -129,9 +129,12 @@ export default {
 }
 @media (max-width: 1000px) {
   .twilight-flex { flex-direction: column; gap: 1.3rem; width: 99vw;}
-  #container { width: 99vw; min-width: 200px; height: 410px;}
+  #container { width: 99vw; min-width: 200px; height: 410px; border-radius: 16px;
+  box-shadow: 0 3px 18px 0 #0002;
+  padding: 14px;          /* NEW: extra inner space */
 }
-  </style>
+}
+</style>
 </head>
 <body>
   <h1 style="text-align:center;">Rubin Summit Temperature Forecast</h1>
@@ -265,7 +268,7 @@ export default {
             if (window.chart) window.chart.destroy();
 
             window.chart = Highcharts.chart('container', {
-              chart: { type: 'spline', zoomType: 'x',
+              chart: { type: 'spline', zoomType: 'x', spacing: [20, 20, 20, 20],   // top, right, bottom, left
                        resetZoomButton: { position: { align: 'right', verticalAlign: 'top', x: 0, y: 0 } } },
               title: { text: null },
                 xAxis: {
