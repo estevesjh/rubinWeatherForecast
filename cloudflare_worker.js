@@ -255,30 +255,26 @@ export default {
 
             const obsBand  = tmin.map((d, i) => [d[0], d[1], tmax[i][1]]);
             const predBand = tpmin.map((d, i) => [d[0], d[1], tpmax[i][1]]);
-            // ---- Build night bands for each sunset‑to‑sunrise span ----
-            const nightBands = [];
-            for (let i = 0; i < sunset.length; i++) {
-              const s = sunset[i];
-              // find the first sunrise after this sunset
-              const sunriseAfter = sunrise.find(ts => ts > s);
-              let e = sunriseAfter;
-              if (!e) {
-                // fallback: 6 am the next local day if no sunrise found
-                const dt = new Date(s);
-                const cl = new Date(dt.toLocaleString('en-US', { timeZone: 'America/Santiago' }));
-                cl.setDate(cl.getDate() + 1);
-                cl.setHours(6, 0, 0, 0);
-                e = cl.getTime() - cl.getTimezoneOffset() * 60000;
+            // ---- Build night bands pairing each sunset with sunrise ----
+            const nightBands = sunset.map(function (sun, idx) {
+              let rise = sunrise[idx];
+              if (rise === undefined) {
+                // fallback: 06:00 CLT next day
+                const dtLocal = new Date(sun).toLocaleString('en-US', { timeZone: 'America/Santiago' });
+                const local = new Date(dtLocal);
+                local.setDate(local.getDate() + 1);
+                local.setHours(6, 0, 0, 0);
+                // convert local CLT 06:00 back to UTC
+                rise = local.getTime() + local.getTimezoneOffset() * 60000;
               }
-              nightBands.push({
+              return {
                 color: 'rgba(136, 136, 136, 0.5)',
-                from: s,
-                to: e,
-                // label only on the first band to avoid clutter
-                label: i === 0 ? { text: 'Night Time', style: { color: '#003366', fontWeight: '600' } } : undefined,
+                from: sun,
+                to: rise,
+                label: { text: 'Night Time', style: { color: '#003366', fontWeight: '600' } },
                 zIndex: 0
-              });
-            }
+              };
+            });
               
             Highcharts.setOptions({ time: { timezone: 'America/Santiago' } });
 
