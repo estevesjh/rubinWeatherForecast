@@ -94,7 +94,7 @@ export default {
   font-size: 2.2rem;
   font-family: 'SF Mono', 'Menlo', 'Consolas', 'monospace';
   font-weight: 600;
-  color: #b9eaff;
+  color: #fff;
   line-height: 1.18;
   margin-bottom: 0.12em;
 }
@@ -147,7 +147,9 @@ export default {
         <div class="twilight-meta" id="twilight-actual">Actual: -- °C (Weather Tower)</div>
       </div>
       <div class="twilight-timebox">
-        <div class="twilight-label">Twilight Time</div>
+        <div class="twilight-label">Current Time</div>
+        <div class="twilight-time" id="current-time">--:-- CLT</div>
+        <div class="twilight-label" style="margin-top:0.6em;">Twilight Time</div>
         <div class="twilight-time" id="twilight-time">--:-- CLT</div>
         <div class="twilight-remaining" id="twilight-remaining">--h --min</div>
       </div>
@@ -173,6 +175,20 @@ export default {
         if (updateBadge.timer) clearInterval(updateBadge.timer);
         updateBadge.timer = setInterval(render, 60 * 1000);
       }
+
+      // ---- Show current time in CLT ----
+      function updateCurrentTimeCL() {
+        const nowCL = new Date().toLocaleTimeString('en-US', {
+          timeZone: 'America/Santiago',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+        const ct = document.getElementById('current-time');
+        if (ct) ct.textContent = nowCL + ' CLT';
+      }
+      updateCurrentTimeCL();
+      setInterval(updateCurrentTimeCL, 60 * 1000);
 
       function fetchAndRedraw() {
         fetch('https://rubin-weather-forecast.jesteves.workers.dev/api/forecast')
@@ -219,26 +235,27 @@ export default {
 
             const obsBand  = tmin.map((d, i) => [d[0], d[1], tmax[i][1]]);
             const predBand = tpmin.map((d, i) => [d[0], d[1], tpmax[i][1]]);
-            // ---- Make Night Band Region ----
-            let nightBands = [];
-            if (sunset.length > 0) {
-              const lastSunset = sunset[sunset.length - 1];
-              // Find the first sunrise after this sunset
-              const sunriseAfterSunset = sunrise.find(ts => ts > lastSunset);
-              let nextSunrise = sunriseAfterSunset;
-              if (!nextSunrise) {
-                // Fallback: 6am next day Chile time
-                const dt = new Date(lastSunset);
-                const clDate = new Date(dt.toLocaleString('en-US', { timeZone: 'America/Santiago' }));
-                clDate.setDate(clDate.getDate() + 1);
-                clDate.setHours(6, 0, 0, 0);
-                nextSunrise = clDate.getTime() - clDate.getTimezoneOffset() * 60000;
+            // ---- Build night bands for each sunset‑to‑sunrise span ----
+            const nightBands = [];
+            for (let i = 0; i < sunset.length; i++) {
+              const s = sunset[i];
+              // find the first sunrise after this sunset
+              const sunriseAfter = sunrise.find(ts => ts > s);
+              let e = sunriseAfter;
+              if (!e) {
+                // fallback: 6 am the next local day if no sunrise found
+                const dt = new Date(s);
+                const cl = new Date(dt.toLocaleString('en-US', { timeZone: 'America/Santiago' }));
+                cl.setDate(cl.getDate() + 1);
+                cl.setHours(6, 0, 0, 0);
+                e = cl.getTime() - cl.getTimezoneOffset() * 60000;
               }
               nightBands.push({
                 color: 'rgba(0,0,0,0.13)',
-                from: lastSunset,
-                to: nextSunrise,
-                label: { text: 'Night Time', style: { color: '#444', fontWeight: 600 } },
+                from: s,
+                to: e,
+                // label only on the first band to avoid clutter
+                label: i === 0 ? { text: 'Night Time', style: { color: '#444', fontWeight: '600' } } : undefined,
                 zIndex: 0
               });
             }
