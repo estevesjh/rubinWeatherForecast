@@ -257,7 +257,7 @@ export default {
                 e = cl.getTime() - cl.getTimezoneOffset() * 60000;
               }
               nightBands.push({
-                color: 'rgba(0,0,0,0.13)',
+                color: 'rgba(0,0,0,0.05)',
                 from: s,
                 to: e,
                 // label only on the first band to avoid clutter
