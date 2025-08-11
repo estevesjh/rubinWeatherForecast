@@ -318,7 +318,7 @@ export default {
                   minute: '2-digit',
                   hour12: false
                 });
-                document.getElementById('twilight-time').textContent = `${twilightCLTime} CLT`;
+                document.getElementById('twilight-time').textContent = twilightCLTime + ' CLT';
 
                 // Compute hours/minutes to twilight
                 const nowUTC = Date.now();
@@ -332,11 +332,11 @@ export default {
                 if (sign === '-') {
                   remainingText = 'Passed';
                 } else if (hours > 0) {
-                  remainingText = `${hours}h ${mins}min`;
+                  remainingText = hours + 'h ' + mins + 'min';
                 } else {
-                  remainingText = `${mins}min`;
+                  remainingText = mins + 'min';
                 }
-                document.getElementById('twilight-remaining').textContent = `In ${remainingText}`;
+                document.getElementById('twilight-remaining').textContent = 'In ' + remainingText;
               } catch (err) {
                 document.getElementById('twilight-time').textContent = '--:-- CLT';
                 document.getElementById('twilight-remaining').textContent = '--h --min';
