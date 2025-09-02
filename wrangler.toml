@@ -1,4 +1,4 @@
-name = "rubin-weather-forecast"
+name = "rubinweatherforecast"
 main = "cloudflare_worker.js"
 compatibility_date = "2025-08-07"
 
