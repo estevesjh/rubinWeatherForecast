@@ -113,7 +113,8 @@ class EFDTemperatureQuery:
         }
 
         # Gather UTC event times across all days in the range
-        for single_day in pd.date_range(start=start_local, end=end_local, freq='D', tz=tz_santiago):
+        # for single_day in pd.date_range(start=start_local, end=end_local, freq='D', tz=tz_santiago):
+        for single_day in pd.date_range(start=start_local, end=end_local, freq='D'):
             day_str = single_day.strftime('%Y-%m-%d')
             tw = TwilightTimes.from_day(day_str)
             event_times['is_sunset'].append(tw.sunset_utc)
@@ -135,6 +136,8 @@ class EFDTemperatureQuery:
         Fetch and return the temperature DataFrame with twilight flags.
         """
         df = self._query_efd()
+        print(f"Fetched {len(df)} rows from EFD."
+              f" Temperature data from {df.index.min().isoformat()} to {df.index.max().isoformat()}.")
         df = self.set_twilight_flags(df)
         return df
 
@@ -179,5 +182,5 @@ if __name__ == "__main__":
     print(f"Querying temperature data from {start_date.isoformat()} to {end_date.isoformat()}")
     query = EFDTemperatureQuery(start_date=start_date, end_date=end_date)
     # query.to_csv(f"{datapath}/temp_window_{end_date.isoformat()}.csv")
-    # query.to_csv(f"temp_window_{end_date.isoformat()}.csv")
+    query.to_csv(f"temp_window_{end_date.isoformat()}.csv")
     print("Done.")

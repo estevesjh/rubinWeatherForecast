@@ -44,9 +44,7 @@ class ProphetTwilightValidator:
         self.df['is_morning_twilight'] = self.df['is_morning_twilight'].astype(bool)
         
         self.filename = None  # optional, for reference
-        # cache evening-twilight timestamps
-        self.twilight_times = self.df.loc[self.df.is_evening_twilight, "ds"]
-        self.sunrise_times = self.df.loc[self.df.is_morning_twilight, "ds"]
+        self.set_sunrise_twilight_times()
         self.set_changepoints()
         self.last_model  = None   # cache last model
         self.last_result = None   # cache last result
@@ -54,6 +52,24 @@ class ProphetTwilightValidator:
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
+    def set_sunrise_twilight_times(self):
+        from helper import TwilightTimes
+        tz_santiago = pytz.timezone("America/Santiago")
+        start_local = self.df['ds'].min().date()
+        end_local   = self.df['ds'].max().date()
+
+        # make sefl.sunrise_times and self.twilight_times
+        sunrise_list = []
+        twilight_list = []
+        for single_day in pd.date_range(start=start_local, end=end_local, freq='D'):
+            day_str = single_day.strftime('%Y-%m-%d')
+            tw = TwilightTimes.from_day(day_str)
+            sunrise_list.append(tw.sunrise_local.replace(tzinfo=None))
+            twilight_list.append(tw.evening_twilight_local.replace(tzinfo=None))
+            
+        self.sunrise_times = pd.Series(sunrise_list).sort_values().reset_index(drop=True)
+        self.twilight_times = pd.Series(twilight_list).sort_values().reset_index(drop=True)
+
     @staticmethod
     def _error_metrics(y_true, y_pred):
         isnan = np.isnan(y_true) | np.isnan(y_pred)
@@ -150,7 +166,9 @@ class ProphetTwilightValidator:
         train = self.df[(self.df.ds >= start) & (self.df.ds < end)]
 
         if len(train) < 2 * 96:          # need ≥2 days (96*15-min samples)
-            print("Not enough training data for the given window_days")
+            # print("Not enough training data for the given window_days")
+            print(f"Not enough training data: have {len(train)}, need at least {2*96}")
+            print(f"Time window: {start} to {end}")
             return None                  # not enough data
 
         # ----- 2.  fit Prophet --------------------------------------
@@ -160,6 +178,7 @@ class ProphetTwilightValidator:
             self.last_model = None
             self.last_result = None
             print("Prophet model training failed")
+            print(f"Time window: {start} to {end}")
             return None
 
         # ----- 3.  build future up to tw_time + 3 h -----------------
@@ -189,7 +208,7 @@ class ProphetTwilightValidator:
         bool_cols = ['is_evening_twilight', 'is_morning_twilight']
         for col in bool_cols:
             if col in merged.columns:
-                merged[col] = merged[col].fillna(False).astype(bool)
+                merged[col] = pd.Series(merged[col], dtype="boolean").fillna(False).astype(bool)
         if merged.empty:
             self.last_model = None
             self.last_result = None
@@ -220,18 +239,21 @@ class ProphetTwilightValidator:
         where y is NaN (including up to df.index.max()).
         Returns a DataFrame with actual and predicted values merged.
         """
+        minDs = self.df.dropna(subset=['y','ds'])['ds'].min()
+        maxDs = self.df['ds'].max()
+        print(f"[INFO] Evaluating latest window from {minDs} to {maxDs} with offset {offset_hr}h")
         # 1. Define window
         end = self.df.loc[self.df.y.notna(), "ds"].max()
         end = end - pd.Timedelta(hours=offset_hr)
 
-        print(f"[INFO] Latest valid data at: {end}")
         start = self.sunrise_times.min()
 
         # 2. Training data
         train = self.df[(self.df.ds >= start) & (self.df.ds <= end) & self.df.y.notna()]
 
         if len(train) < 192:  # e.g., 2 days of 15-min
-            print("Not enough training data")
+            print(f"Not enough training data: have {len(train)}, need at least {2*96}")
+            print(f"Time window: {start} to {end}")
             return None
 
         # 3. Fit Prophet
@@ -335,7 +357,9 @@ class ProphetTwilightValidator:
             )
 
         chile_tz = pytz.timezone("America/Santiago")
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
+            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+        
         if df["timestamp"].dt.tz is None:
             # Assume it is UTC, localize and convert
             df["timestamp"] = df["timestamp"].dt.tz_localize("UTC").dt.tz_convert(chile_tz)
